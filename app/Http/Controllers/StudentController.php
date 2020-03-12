@@ -8,7 +8,8 @@ class StudentController extends Controller
 {
     public function index()
     {
-        
+        $data = "Welcome to the Student management system";
+        return view('admin.students.index', compact('data'));
     }
 
     public function create()
