@@ -3,15 +3,13 @@
 namespace App\Http\Controllers;
 
 use App\User;
-use App\Grade;
 use App\Parents;
-use App\Student;
 use Illuminate\Http\Request;
+
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
-use Illuminate\Validation\Rule;
 
-class StudentController extends Controller
+class ParentsController extends Controller
 {
     /**
      * Display a listing of the resource.
@@ -20,9 +18,9 @@ class StudentController extends Controller
      */
     public function index()
     {
-        $students = Student::with('class')->latest()->paginate(10);
-
-        return view('backend.students.index', compact('students'));
+        $parents = Parents::with(['user','children'])->latest()->paginate(10);
+        
+        return view('backend.parents.index', compact('parents'));
     }
 
     /**
@@ -32,10 +30,7 @@ class StudentController extends Controller
      */
     public function create()
     {
-        $classes = Grade::latest()->get();
-        $parents = Parents::with('user')->latest()->get();
-        
-        return view('backend.students.create', compact('classes','parents'));
+        return view('backend.parents.create');
     }
 
     /**
@@ -50,28 +45,18 @@ class StudentController extends Controller
             'name'              => 'required|string|max:255',
             'email'             => 'required|string|email|max:255|unique:users',
             'password'          => 'required|string|min:8',
-            'parent_id'         => 'required|numeric',
-            'class_id'          => 'required|numeric',
-            'roll_number'       => [
-                'required',
-                'numeric',
-                Rule::unique('students')->where(function ($query) use ($request) {
-                    return $query->where('class_id', $request->class_id);
-                })
-            ],
-            'gender'            => 'required|string',
+            'gender'            => 'required|string|max:255',
             'phone'             => 'required|string|max:255',
-            'dateofbirth'       => 'required|date',
             'current_address'   => 'required|string|max:255',
             'permanent_address' => 'required|string|max:255'
         ]);
 
         $user = User::create([
-            'name'              => $request->name,
-            'email'             => $request->email,
-            'password'          => Hash::make($request->password)
+            'name'      => $request->name,
+            'email'     => $request->email,
+            'password'  => Hash::make($request->password)
         ]);
-
+        
         if ($request->hasFile('profile_picture')) {
             $profile = Str::slug($user->name).'-'.$user->id.'.'.$request->profile_picture->getClientOriginalExtension();
             $request->profile_picture->move(public_path('images/profile'), $profile);
@@ -82,115 +67,97 @@ class StudentController extends Controller
             'profile_picture' => $profile
         ]);
 
-        $user->student()->create([
-            'parent_id'         => $request->parent_id,
-            'class_id'          => $request->class_id,
-            'roll_number'       => $request->roll_number,
+        $user->parent()->create([
             'gender'            => $request->gender,
             'phone'             => $request->phone,
-            'dateofbirth'       => $request->dateofbirth,
             'current_address'   => $request->current_address,
             'permanent_address' => $request->permanent_address
         ]);
 
-        $user->assignRole('Student');
+        $user->assignRole('Parent');
 
-        return redirect()->route('student.index');
+        return redirect()->route('parents.index');
     }
 
     /**
      * Display the specified resource.
      *
-     * @param  \App\Student  $student
+     * @param  \App\Parents  $parents
      * @return \Illuminate\Http\Response
      */
-    public function show(Student $student)
+    public function show(Parents $parents)
     {
-        $class = Grade::with('subjects')->where('id', $student->class_id)->first();
-        
-        return view('backend.students.show', compact('class','student'));
+        //
     }
 
     /**
      * Show the form for editing the specified resource.
      *
-     * @param  \App\Student  $student
+     * @param  \App\Parents  $parents
      * @return \Illuminate\Http\Response
      */
-    public function edit(Student $student)
+    public function edit($id)
     {
-        $classes = Grade::latest()->get();
-        $parents = Parents::with('user')->latest()->get();
+        $parent = Parents::with('user')->findOrFail($id); 
 
-        return view('backend.students.edit', compact('classes','parents','student'));
+        return view('backend.parents.edit', compact('parent'));
     }
 
     /**
      * Update the specified resource in storage.
      *
      * @param  \Illuminate\Http\Request  $request
-     * @param  \App\Student  $student
+     * @param  \App\Parents  $parents
      * @return \Illuminate\Http\Response
      */
-    public function update(Request $request, Student $student)
+    public function update(Request $request, $id)
     {
+        $parents = Parents::findOrFail($id);
+
         $request->validate([
             'name'              => 'required|string|max:255',
-            'email'             => 'required|string|email|max:255|unique:users,email,'.$student->user_id,
-            'parent_id'         => 'required|numeric',
-            'class_id'          => 'required|numeric',
-            'roll_number'       => [
-                'required',
-                'numeric',
-                Rule::unique('students')->ignore($student->id)->where(function ($query) use ($request) {
-                    return $query->where('class_id', $request->class_id);
-                })
-            ],
+            'email'             => 'required|string|email|max:255|unique:users,email,'.$parents->user_id,
             'gender'            => 'required|string',
             'phone'             => 'required|string|max:255',
-            'dateofbirth'       => 'required|date',
             'current_address'   => 'required|string|max:255',
             'permanent_address' => 'required|string|max:255'
         ]);
 
         if ($request->hasFile('profile_picture')) {
-            $profile = Str::slug($student->user->name).'-'.$student->user->id.'.'.$request->profile_picture->getClientOriginalExtension();
+            $profile = Str::slug($parents->user->name).'-'.$parents->user->id.'.'.$request->profile_picture->getClientOriginalExtension();
             $request->profile_picture->move(public_path('images/profile'), $profile);
         } else {
-            $profile = $student->user->profile_picture;
+            $profile = $parents->user->profile_picture;
         }
 
-        $student->user()->update([
+        $parents->user()->update([
             'name'              => $request->name,
             'email'             => $request->email,
             'profile_picture'   => $profile
         ]);
 
-        $student->update([
-            'parent_id'         => $request->parent_id,
-            'class_id'          => $request->class_id,
-            'roll_number'       => $request->roll_number,
+        $parents->update([
             'gender'            => $request->gender,
             'phone'             => $request->phone,
-            'dateofbirth'       => $request->dateofbirth,
             'current_address'   => $request->current_address,
             'permanent_address' => $request->permanent_address
         ]);
 
-        return redirect()->route('student.index');
+        return redirect()->route('parents.index');
     }
 
     /**
      * Remove the specified resource from storage.
      *
-     * @param  \App\Student  $student
+     * @param  \App\Parents  $parents
      * @return \Illuminate\Http\Response
      */
-    public function destroy(Student $student)
+    public function destroy($id)
     {
-        $user = User::findOrFail($student->user_id);
-        $user->student()->delete();
-        $user->removeRole('Student');
+        $parent = Parents::findOrFail($id);
+
+        $user = User::findOrFail($parent->user_id);
+        $user->removeRole('Parent');
 
         if ($user->delete()) {
             if($user->profile_picture != 'avatar.png') {
@@ -200,6 +167,8 @@ class StudentController extends Controller
                 }
             }
         }
+
+        $parent->delete();
 
         return back();
     }
